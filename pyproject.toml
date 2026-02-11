@@ -1,0 +1,21 @@
+[project]
+name = "lichess-opening-explorer"
+version = "0.1.0"
+description = "Add your description here"
+readme = "README.md"
+authors = [
+    { name = "John Ramey", email = "johnramey@gmail.com" }
+]
+requires-python = ">=3.13"
+dependencies = [
+    "httpx>=0.28.1",
+    "python-chess>=1.999",
+    "tenacity>=9.1.4",
+]
+
+[project.scripts]
+lichess-opening-explorer = "lichess_opening_explorer.cli:main"
+
+[build-system]
+requires = ["uv_build>=0.9.22,<0.10.0"]
+build-backend = "uv_build"
