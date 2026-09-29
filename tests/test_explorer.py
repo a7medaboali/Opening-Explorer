@@ -1,10 +1,14 @@
+import sys
+
 import chess
 import chess.pgn
+import pytest
 
 from lichess_opening_explorer.explorer import RepertoireBuilder
 from lichess_opening_explorer.models import MoveNode, MoveStats
 from lichess_opening_explorer.pgn_export import _add_nodes, build_pgn
 from lichess_opening_explorer.api import LichessClient
+from lichess_opening_explorer import cli
 
 
 QGD_FEN = (
@@ -678,3 +682,123 @@ def test_build_attaches_black_mistake_and_punishment(
     assert punishment.san == "Nf3"
     assert punishment.uci == "g1f3"
     assert punishment.comment.startswith("PUNISHMENT")
+
+
+def test_cli_builds_and_exports_repertoire(monkeypatch):
+    output_path = "test-output.pgn"
+
+    fake_nodes = [
+        MoveNode(
+            san="e4",
+            uci="e2e4",
+            children=[],
+            comment="MAIN LINE",
+        )
+    ]
+
+    captured = {}
+
+    class FakeClient:
+        def close(self):
+            captured["client_closed"] = True
+
+    class FakeBuilder:
+        def __init__(
+            self,
+            client,
+            color,
+            min_games,
+            threshold,
+        ):
+            captured["builder_args"] = (
+                client,
+                color,
+                min_games,
+                threshold,
+            )
+
+        def build(self, fen):
+            captured["build_fen"] = fen
+            return fake_nodes
+
+    def fake_build_pgn(
+        fen,
+        nodes,
+        output,
+    ):
+        captured["pgn_args"] = (
+            fen,
+            nodes,
+            output,
+        )
+
+    monkeypatch.setattr(
+        cli,
+        "LichessClient",
+        FakeClient,
+    )
+
+    monkeypatch.setattr(
+        cli,
+        "RepertoireBuilder",
+        FakeBuilder,
+    )
+
+    monkeypatch.setattr(
+        cli,
+        "build_pgn",
+        fake_build_pgn,
+    )
+
+    monkeypatch.setattr(
+        sys,
+        "argv",
+        [
+            "lichess-opening-explorer",
+            "--fen",
+            chess.STARTING_FEN,
+            "--min-games",
+            "100",
+            "--threshold",
+            "0.6",
+            "--output",
+            output_path,
+        ],
+    )
+
+    cli.main()
+
+    client, color, min_games, threshold = (
+        captured["builder_args"]
+    )
+
+    assert isinstance(client, FakeClient)
+    assert color == chess.WHITE
+    assert min_games == 100
+    assert threshold == 0.6
+
+    assert captured["build_fen"] == chess.STARTING_FEN
+
+    assert captured["pgn_args"] == (
+        chess.STARTING_FEN,
+        fake_nodes,
+        output_path,
+    )
+
+    assert captured["client_closed"] is True
+
+def test_cli_rejects_invalid_fen(monkeypatch):
+    monkeypatch.setattr(
+        sys,
+        "argv",
+        [
+            "lichess-opening-explorer",
+            "--fen",
+            "invalid-fen",
+        ],
+    )
+
+    with pytest.raises(SystemExit) as exc_info:
+        cli.main()
+
+    assert exc_info.value.code == 1
