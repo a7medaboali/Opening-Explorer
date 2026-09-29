@@ -514,3 +514,167 @@ def test_find_black_mistakes_sorts_by_magnitude(
         "SERIOUS MISTAKE",
         "MISTAKE",
     ]
+
+
+def test_build_creates_repertoire_tree(monkeypatch):
+    builder = RepertoireBuilder.__new__(RepertoireBuilder)
+
+    builder.max_depth = 2
+    builder.max_moves = 2
+    builder.min_games = 1
+    builder.min_frequency = 0.0
+    builder._position_cache = {}
+    builder._tree_cache = {}
+    builder._active = set()
+    builder._punishment_cache = {}
+
+    board = chess.Board()
+
+    e4 = board.parse_san("e4")
+
+    white_data = type(
+        "FakePositionData",
+        (),
+        {
+            "white": 60,
+            "draws": 20,
+            "black": 20,
+            "moves": [
+                MoveStats(
+                    uci=e4.uci(),
+                    san="e4",
+                    white=50,
+                    draws=10,
+                    black=10,
+                )
+            ],
+        },
+    )()
+
+    black_data = type(
+        "FakePositionData",
+        (),
+        {
+            "white": 60,
+            "draws": 20,
+            "black": 20,
+            "moves": [],
+        },
+    )()
+
+    def fake_get_position_data(board):
+        if board.turn == chess.WHITE:
+            return white_data
+
+        return black_data
+
+    monkeypatch.setattr(
+        builder,
+        "_get_position_data",
+        fake_get_position_data,
+    )
+
+    nodes = builder.build(chess.STARTING_FEN)
+
+    assert len(nodes) == 1
+
+    root = nodes[0]
+
+    assert root.san == "e4"
+    assert root.uci == "e2e4"
+    assert root.comment == "MAIN LINE"
+    assert root.children == []
+
+def test_build_attaches_black_mistake_and_punishment(
+    monkeypatch,
+):
+    builder = RepertoireBuilder.__new__(RepertoireBuilder)
+
+    builder.max_depth = 2
+    builder.max_moves = 1
+    builder.min_games = 1
+    builder.min_frequency = 0.0
+    builder.punishment_depth = 2
+
+    builder._position_cache = {}
+    builder._tree_cache = {}
+    builder._active = set()
+    builder._punishment_cache = {}
+
+    board = chess.Board()
+    board.push_san("e4")
+
+    e5 = board.parse_san("e5")
+
+    def fake_get_position_data(board):
+        return type(
+            "FakePositionData",
+            (),
+            {
+                "white": 0,
+                "draws": 0,
+                "black": 0,
+                "moves": [],
+            },
+        )()
+
+    monkeypatch.setattr(
+        builder,
+        "_get_position_data",
+        fake_get_position_data,
+    )
+
+    monkeypatch.setattr(
+        builder,
+        "_find_black_mistakes",
+        lambda board: [
+            {
+                "move": "e5",
+                "before": 1.0,
+                "after": -2.5,
+                "difference": 3.5,
+                "classification": "BLUNDER",
+                "comment": "BLUNDER: ...e5?!",
+            }
+        ],
+    )
+
+    def fake_build_punishment_nodes(
+        board,
+        plies,
+    ):
+        return [
+            MoveNode(
+                san="Nf3",
+                uci="g1f3",
+                children=[],
+                comment="",
+            )
+        ]
+
+    monkeypatch.setattr(
+        builder,
+        "_build_punishment_nodes",
+        fake_build_punishment_nodes,
+    )
+
+    nodes = builder.build(
+        "rnbqkbnr/pppppppp/8/8/"
+        "4P3/8/PPPP1PPP/RNBQKBNR b "
+        "KQkq - 0 1"
+    )
+
+    assert len(nodes) == 1
+
+    mistake = nodes[0]
+
+    assert mistake.san == "e5"
+    assert mistake.uci == "e7e5"
+    assert mistake.comment.startswith("MISTAKE")
+    assert len(mistake.children) == 1
+
+    punishment = mistake.children[0]
+
+    assert punishment.san == "Nf3"
+    assert punishment.uci == "g1f3"
+    assert punishment.comment.startswith("PUNISHMENT")
