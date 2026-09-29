@@ -319,6 +319,7 @@ def test_real_stockfish_can_analyse_position():
 
     builder.engine.quit()
 
+
 def test_black_move_calculates_evaluation_swing(monkeypatch):
     builder = RepertoireBuilder.__new__(RepertoireBuilder)
     builder.punishment_depth = 6
@@ -367,3 +368,45 @@ def test_black_move_calculates_evaluation_swing(monkeypatch):
     expected_board.push_san("e5")
 
     assert result["board"].fen() == expected_board.fen()   
+
+def test_find_black_mistakes_handles_negative_evaluation_change(
+    monkeypatch,
+):
+    builder = RepertoireBuilder.__new__(RepertoireBuilder)
+
+    builder.mistake_threshold = 1.0
+    builder._punishment_cache = {}
+
+    board = chess.Board()
+    board.push_san("e4")
+
+    move = board.parse_san("e5")
+
+    monkeypatch.setattr(
+        builder,
+        "_candidate_black_moves",
+        lambda board: [move],
+    )
+
+    monkeypatch.setattr(
+        builder,
+        "test_black_move",
+        lambda board, san: {
+            "move": san,
+            "before": 1.20,
+            "after": -2.30,
+            "difference": -3.50,
+            "best_line": "2. Nf3",
+        },
+    )
+
+    monkeypatch.setattr(
+        builder,
+        "_make_mistake_comment",
+        lambda result, classification: classification,
+    )
+
+    mistakes = builder._find_black_mistakes(board)
+
+    assert len(mistakes) == 1
+    assert mistakes[0]["classification"] == "BLUNDER"    

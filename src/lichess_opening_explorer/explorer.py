@@ -405,9 +405,12 @@ class RepertoireBuilder:
             if difference is None:
                 continue
 
+            mistake_magnitude = abs(float(difference))
+            result["difference"] = mistake_magnitude
+
             classification = (
                 self._classify_mistake(
-                    float(difference)
+                    mistake_magnitude
                 )
             )
 
