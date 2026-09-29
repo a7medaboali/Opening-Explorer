@@ -4,6 +4,7 @@ import chess.pgn
 from lichess_opening_explorer.explorer import RepertoireBuilder
 from lichess_opening_explorer.models import MoveNode, MoveStats
 from lichess_opening_explorer.pgn_export import _add_nodes, build_pgn
+from lichess_opening_explorer.api import LichessClient
 
 
 QGD_FEN = (
@@ -206,3 +207,163 @@ def test_candidate_black_moves_include_forcing_moves(monkeypatch):
         board.is_capture(move) or board.gives_check(move)
         for move in candidates
     )
+
+def test_find_black_mistakes_classifies_and_sorts(monkeypatch):
+    builder = RepertoireBuilder.__new__(RepertoireBuilder)
+
+    builder.mistake_threshold = 1.0
+    builder._punishment_cache = {}
+
+    board = chess.Board()
+
+    # Make it Black's turn.
+    board.push_san("e4")
+
+    moves = [
+        board.parse_san("e5"),
+        board.parse_san("Nc6"),
+        board.parse_san("d5"),
+        board.parse_san("Nf6"),
+    ]
+
+    monkeypatch.setattr(
+        builder,
+        "_candidate_black_moves",
+        lambda board: moves,
+    )
+
+    differences = {
+        "e7e5": 1.2,
+        "b8c6": 3.5,
+        "d7d5": 0.5,
+        "g8f6": 2.0,
+    }
+
+    def fake_test_black_move(board, san):
+        move = board.parse_san(san)
+
+        return {
+            "move": san,
+            "before": 0.0,
+            "after": -differences[move.uci()],
+            "difference": differences[move.uci()],
+            "best_line": "2. Qa4+!",
+        }
+
+    monkeypatch.setattr(
+        builder,
+        "test_black_move",
+        fake_test_black_move,
+    )
+
+    monkeypatch.setattr(
+        builder,
+        "_make_mistake_comment",
+        lambda result, classification: classification,
+    )
+
+    mistakes = builder._find_black_mistakes(board)
+
+    assert len(mistakes) == 3
+
+    assert [result["difference"] for result in mistakes] == [
+        3.5,
+        2.0,
+        1.2,
+    ]
+
+    assert [result["classification"] for result in mistakes] == [
+        "BLUNDER",
+        "SERIOUS MISTAKE",
+        "MISTAKE",
+    ]
+
+    assert all("comment" in result for result in mistakes)    
+
+def test_find_black_mistakes_returns_empty_on_white_turn(monkeypatch):
+    builder = RepertoireBuilder.__new__(RepertoireBuilder)
+
+    board = chess.Board()
+
+    def should_not_be_called(board):
+        raise AssertionError(
+            "_candidate_black_moves should not be called on White's turn"
+        )
+
+    monkeypatch.setattr(
+        builder,
+        "_candidate_black_moves",
+        should_not_be_called,
+    )
+
+    mistakes = builder._find_black_mistakes(board)
+
+    assert mistakes == []
+
+def test_real_stockfish_can_analyse_position():
+    fake_client = object()
+
+    builder = RepertoireBuilder(
+        client=fake_client,
+        color=chess.WHITE,
+        stockfish_time=0.05,
+    )
+
+    board = chess.Board(QGD_FEN)
+
+    result = builder.analyse_position(board)
+
+    assert result is not None
+    assert "score" in result
+    assert "pv" in result
+
+    builder.engine.quit()
+
+def test_black_move_calculates_evaluation_swing(monkeypatch):
+    builder = RepertoireBuilder.__new__(RepertoireBuilder)
+    builder.punishment_depth = 6
+
+    board = chess.Board()
+    board.push_san("e4")
+
+    analysis_results = [
+        {
+            "score": 1.20,
+            "pv": [],
+        },
+        {
+            "score": -2.30,
+            "pv": [],
+        },
+    ]
+
+    def fake_analyse_position(board):
+        return analysis_results.pop(0)
+
+    monkeypatch.setattr(
+        builder,
+        "analyse_position",
+        fake_analyse_position,
+    )
+
+    monkeypatch.setattr(
+        builder,
+        "get_score",
+        lambda info, color: info["score"],
+    )
+
+    result = builder.test_black_move(
+        board,
+        "e5",
+    )
+
+    assert result["move"] == "e5"
+    assert result["before"] == 1.20
+    assert result["after"] == -2.30
+    assert result["difference"] == -3.50
+    assert result["best_line"] == ""
+
+    expected_board = board.copy()
+    expected_board.push_san("e5")
+
+    assert result["board"].fen() == expected_board.fen()   
