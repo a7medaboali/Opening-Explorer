@@ -709,12 +709,14 @@ def test_cli_builds_and_exports_repertoire(monkeypatch):
             color,
             min_games,
             threshold,
+            max_depth,
         ):
             captured["builder_args"] = (
                 client,
                 color,
                 min_games,
                 threshold,
+                max_depth,
             )
 
         def build(self, fen):
@@ -761,6 +763,8 @@ def test_cli_builds_and_exports_repertoire(monkeypatch):
             "100",
             "--threshold",
             "0.6",
+            "--max-depth",
+            "6",
             "--output",
             output_path,
         ],
@@ -768,7 +772,7 @@ def test_cli_builds_and_exports_repertoire(monkeypatch):
 
     cli.main()
 
-    client, color, min_games, threshold = (
+    client, color, min_games, threshold, max_depth = (
         captured["builder_args"]
     )
 
@@ -776,6 +780,7 @@ def test_cli_builds_and_exports_repertoire(monkeypatch):
     assert color == chess.WHITE
     assert min_games == 100
     assert threshold == 0.6
+    assert max_depth == 6
 
     assert captured["build_fen"] == chess.STARTING_FEN
 

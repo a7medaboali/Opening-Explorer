@@ -532,7 +532,8 @@ class RepertoireBuilder:
         """
         Select the main Lichess moves.
 
-        These are the actual repertoire branches.
+        Selects the most popular moves until their cumulative
+        frequency reaches the configured threshold.
         """
 
         moves = []
@@ -546,26 +547,17 @@ class RepertoireBuilder:
         if total_games <= 0:
             return moves
 
-        for move in getattr(
-            data,
-            "moves",
-            [],
-        ):
+        for move in getattr(data, "moves", []):
             games = (
                 move.white
                 + move.draws
                 + move.black
             )
 
-            frequency = (
-                games / total_games
-            )
-
             if games < self.min_games:
                 continue
 
-            if frequency < self.min_frequency:
-                continue
+            frequency = games / total_games
 
             moves.append(
                 (
@@ -580,7 +572,27 @@ class RepertoireBuilder:
             reverse=True,
         )
 
-        return moves[: self.max_moves]
+        selected = []
+        cumulative_frequency = 0.0
+
+        for move, frequency, games in moves:
+            selected.append(
+                (
+                    move,
+                    frequency,
+                    games,
+                )
+            )
+
+            cumulative_frequency += frequency
+
+            if (
+                cumulative_frequency >= self.min_frequency
+                or len(selected) >= self.max_moves
+            ):
+                break
+
+        return selected
 
     # =============================================================
     # TREE BUILDING

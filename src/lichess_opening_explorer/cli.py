@@ -33,6 +33,12 @@ def main() -> None:
         help="Cumulative frequency threshold for our moves (default: 0.8)",
     )
     parser.add_argument(
+        "--max-depth",
+        type=int,
+        default=10,
+        help="Maximum depth of the repertoire tree (default: 10)",
+    )
+    parser.add_argument(
         "-o",
         "--output",
         default="repertoire.pgn",
@@ -53,8 +59,15 @@ def main() -> None:
 
     client = LichessClient()
     try:
-        builder = RepertoireBuilder(client, color, args.min_games, args.threshold)
+        builder = RepertoireBuilder(
+            client,
+            color,
+            args.min_games,
+            args.threshold,
+            max_depth=args.max_depth,
+        )
         nodes = builder.build(args.fen)
         build_pgn(args.fen, nodes, args.output)
     finally:
         client.close()
+        
