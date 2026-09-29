@@ -27,9 +27,15 @@ The repertoire color is inferred from the side to move in the starting FEN.
 
 ## Algorithm
 
-- **Our moves**: includes moves by descending frequency until cumulative frequency >= threshold
-- **Opponent moves**: always includes the most popular move; also includes any top-4 move with a higher performance score (white win% + 50% * draw%)
-- **Termination**: stops exploring when a position has fewer than `min-games` total games
+- **Main repertoire moves**: selects moves from the Lichess Masters database using game count and frequency thresholds.
+- **Black deviations**: checks Lichess Masters moves and forcing Black moves (captures and checks) as potential deviations.
+- **Mistake detection**: uses Stockfish to compare the position before and after a Black move.
+- **Mistake classification**:
+  - `MISTAKE`: evaluation swing >= 1.0 pawn
+  - `SERIOUS MISTAKE`: evaluation swing >= 1.5 pawns
+  - `BLUNDER`: evaluation swing >= 3.0 pawns
+- **Punishment**: for detected mistakes, generates a Stockfish principal variation as the punishment line.
+- **Termination**: stops building the repertoire when the configured maximum depth is reached or no qualifying Lichess moves remain.
 
 ## Example
 
