@@ -409,4 +409,108 @@ def test_find_black_mistakes_handles_negative_evaluation_change(
     mistakes = builder._find_black_mistakes(board)
 
     assert len(mistakes) == 1
-    assert mistakes[0]["classification"] == "BLUNDER"    
+    assert mistakes[0]["classification"] == "BLUNDER" 
+
+
+def test_find_black_mistakes_ignores_missing_difference(
+    monkeypatch,
+):
+    builder = RepertoireBuilder.__new__(RepertoireBuilder)
+
+    builder.mistake_threshold = 1.0
+    builder._punishment_cache = {}
+
+    board = chess.Board()
+    board.push_san("e4")
+
+    move = board.parse_san("e5")
+
+    monkeypatch.setattr(
+        builder,
+        "_candidate_black_moves",
+        lambda board: [move],
+    )
+
+    monkeypatch.setattr(
+        builder,
+        "test_black_move",
+        lambda board, san: {
+            "move": san,
+            "before": None,
+            "after": None,
+            "difference": None,
+            "best_line": "",
+        },
+    )
+
+    mistakes = builder._find_black_mistakes(board)
+
+    assert mistakes == []
+
+
+def test_find_black_mistakes_sorts_by_magnitude(
+    monkeypatch,
+):
+    builder = RepertoireBuilder.__new__(RepertoireBuilder)
+
+    builder.mistake_threshold = 1.0
+    builder._punishment_cache = {}
+
+    board = chess.Board()
+    board.push_san("e4")
+
+    moves = [
+        board.parse_san("e5"),
+        board.parse_san("Nc6"),
+        board.parse_san("d5"),
+    ]
+
+    monkeypatch.setattr(
+        builder,
+        "_candidate_black_moves",
+        lambda board: moves,
+    )
+
+    differences = {
+        "e7e5": -1.2,
+        "b8c6": -3.5,
+        "d7d5": -2.0,
+    }
+
+    def fake_test_black_move(board, san):
+        move = board.parse_san(san)
+        difference = differences[move.uci()]
+
+        return {
+            "move": san,
+            "before": 1.0,
+            "after": 1.0 + difference,
+            "difference": difference,
+            "best_line": "2. Nf3",
+        }
+
+    monkeypatch.setattr(
+        builder,
+        "test_black_move",
+        fake_test_black_move,
+    )
+
+    monkeypatch.setattr(
+        builder,
+        "_make_mistake_comment",
+        lambda result, classification: classification,
+    )
+
+    mistakes = builder._find_black_mistakes(board)
+
+    assert [result["difference"] for result in mistakes] == [
+        3.5,
+        2.0,
+        1.2,
+    ]
+
+    assert [result["classification"] for result in mistakes] == [
+        "BLUNDER",
+        "SERIOUS MISTAKE",
+        "MISTAKE",
+    ]
