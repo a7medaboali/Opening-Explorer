@@ -293,7 +293,7 @@ class RepertoireBuilder:
             f"{classification}: ...{move}?!\n"
             f"Evaluation: {before_text} -> {after_text}\n"
             f"Swing: {difference_text}\n"
-            f"Best punishment: {punishment}!"
+            f"Best punishment: {punishment.rstrip('!')}!"
         )
 
     # =============================================================
